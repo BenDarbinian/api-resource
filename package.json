@@ -1,0 +1,53 @@
+{
+  "name": "@bendarbinian/api-resource",
+  "version": "0.1.0",
+  "description": "A lightweight library for transforming data into clean API resources, with first-class TypeScript support.",
+  "keywords": [
+    "api",
+    "resource",
+    "response",
+    "transformer",
+    "serialization",
+    "typescript"
+  ],
+  "homepage": "https://github.com/BenDarbinian/api-resource#readme",
+  "bugs": {
+    "url": "https://github.com/BenDarbinian/api-resource/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BenDarbinian/api-resource.git"
+  },
+  "license": "MIT",
+  "author": "Ben Darbinian",
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/types/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "clean": "rimraf dist",
+    "prepack": "npm test",
+    "test": "npm run build && npm run test:types && node --test",
+    "test:types": "tsc -p tsconfig.test.json"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.3",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
