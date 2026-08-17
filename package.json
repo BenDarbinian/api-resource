@@ -1,12 +1,12 @@
 {
   "name": "@bendarbinian/api-resource",
   "version": "0.1.0",
-  "description": "A lightweight library for transforming data into clean API resources, with first-class TypeScript support.",
+  "description": "A lightweight library for building typed API resources from domain data, with first-class TypeScript support.",
   "keywords": [
     "api",
     "resource",
     "response",
-    "transformer",
+    "typed-resources",
     "serialization",
     "typescript"
   ],

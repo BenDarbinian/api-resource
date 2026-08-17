@@ -13,12 +13,15 @@ type User = {
     lastName: string;
 };
 
-class UserResource extends Resource<User> {
-    transform(user: User) {
-        return {
-            id: user.id,
-            fullName: `${user.firstName} ${user.lastName}`,
-        };
+class UserResource extends Resource {
+    readonly id: number;
+    readonly fullName: string;
+
+    constructor(user: User) {
+        super();
+
+        this.id = user.id;
+        this.fullName = `${user.firstName} ${user.lastName}`;
     }
 }
 
@@ -31,65 +34,44 @@ const users = UserResource.collection([
     { id: 1, firstName: 'Ada', lastName: 'Lovelace' },
 ]);
 
-type UserOutput = { id: number; fullName: string };
-type MakeOutputInference = Expect<Equal<typeof user, UserOutput>>;
-type CollectionOutputInference = Expect<Equal<typeof users, UserOutput[]>>;
-
-// @ts-expect-error Resource.make() accepts the transform input type.
-UserResource.make({ id: '1', firstName: 'Ada', lastName: 'Lovelace' });
-// @ts-expect-error Resource.collection() accepts an array of transform inputs.
-UserResource.collection([{ id: '1', firstName: 'Ada', lastName: 'Lovelace' }]);
-
-type ExplicitUserOutput = {
-    id: number;
-    displayName: string;
-};
-
-class ExplicitUserResource extends Resource<User, ExplicitUserOutput> {
-    transform(user: User): ExplicitUserOutput {
-        return {
-            id: user.id,
-            displayName: `${user.lastName}, ${user.firstName}`,
-        };
-    }
-}
-
-const explicitUser = ExplicitUserResource.make({
-    id: 1,
-    firstName: 'Ada',
-    lastName: 'Lovelace',
-});
-
-type ExplicitOutputContract = Expect<
-    Equal<typeof explicitUser, ExplicitUserOutput>
+type MakeReturnsConcreteResource = Expect<Equal<typeof user, UserResource>>;
+type CollectionReturnsConcreteResources = Expect<
+    Equal<typeof users, UserResource[]>
 >;
 
-class InvalidExplicitUserResource extends Resource<User, ExplicitUserOutput> {
-    // @ts-expect-error The transform result must satisfy the explicit Output contract.
-    transform(user: User) {
-        return {
-            id: String(user.id),
-            displayName: `${user.lastName}, ${user.firstName}`,
-        };
-    }
-}
+// @ts-expect-error Resource.make() accepts the constructor input type.
+UserResource.make({ id: '1', firstName: 'Ada', lastName: 'Lovelace' });
+// @ts-expect-error Resource.collection() accepts constructor inputs.
+UserResource.collection([{ id: '1', firstName: 'Ada', lastName: 'Lovelace' }]);
+
+// @ts-expect-error Resource no longer accepts generic arguments.
+class LegacyResource extends Resource<User> {}
 
 type Company = { id: number; name: string };
 
-class CompanyResource extends Resource<Company> {
-    transform(company: Company) {
-        return { id: company.id, name: company.name };
+class CompanyResource extends Resource {
+    readonly id: number;
+    readonly name: string;
+
+    constructor(company: Company) {
+        super();
+
+        this.id = company.id;
+        this.name = company.name;
     }
 }
 
 type Employee = { id: number; company: Company };
 
-class EmployeeResource extends Resource<Employee> {
-    transform(employee: Employee) {
-        return {
-            id: employee.id,
-            company: CompanyResource.make(employee.company),
-        };
+class EmployeeResource extends Resource {
+    readonly id: number;
+    readonly company: CompanyResource;
+
+    constructor(employee: Employee) {
+        super();
+
+        this.id = employee.id;
+        this.company = CompanyResource.make(employee.company);
     }
 }
 
@@ -98,29 +80,38 @@ const employee = EmployeeResource.make({
     company: { id: 10, name: 'Analytical Engines' },
 });
 
-type NestedMakeOutput = Expect<
-    Equal<
-        typeof employee,
-        { id: number; company: { id: number; name: string } }
-    >
+type NestedMakeReturnsNamedResource = Expect<
+    Equal<typeof employee, EmployeeResource>
+>;
+type NestedResourceKeepsItsName = Expect<
+    Equal<typeof employee.company, CompanyResource>
 >;
 
 type Item = { sku: string; quantity: number };
 
-class ItemResource extends Resource<Item> {
-    transform(item: Item) {
-        return { sku: item.sku, quantity: item.quantity };
+class ItemResource extends Resource {
+    readonly sku: string;
+    readonly quantity: number;
+
+    constructor(item: Item) {
+        super();
+
+        this.sku = item.sku;
+        this.quantity = item.quantity;
     }
 }
 
 type Order = { id: number; items: Item[] };
 
-class OrderResource extends Resource<Order> {
-    transform(order: Order) {
-        return {
-            id: order.id,
-            items: ItemResource.collection(order.items),
-        };
+class OrderResource extends Resource {
+    readonly id: number;
+    readonly items: ItemResource[];
+
+    constructor(order: Order) {
+        super();
+
+        this.id = order.id;
+        this.items = ItemResource.collection(order.items);
     }
 }
 
@@ -129,16 +120,13 @@ const order = OrderResource.make({
     items: [{ sku: 'book', quantity: 1 }],
 });
 
-type NestedCollectionOutput = Expect<
-    Equal<
-        typeof order,
-        { id: number; items: { sku: string; quantity: number }[] }
-    >
+type NestedCollectionReturnsNamedResources = Expect<
+    Equal<typeof order.items, ItemResource[]>
 >;
 
 export type ResourceTypeTests =
-    | MakeOutputInference
-    | CollectionOutputInference
-    | ExplicitOutputContract
-    | NestedMakeOutput
-    | NestedCollectionOutput;
+    | MakeReturnsConcreteResource
+    | CollectionReturnsConcreteResources
+    | NestedMakeReturnsNamedResource
+    | NestedResourceKeepsItsName
+    | NestedCollectionReturnsNamedResources;

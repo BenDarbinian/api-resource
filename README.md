@@ -1,16 +1,16 @@
 # @bendarbinian/api-resource
 
-A lightweight, framework-agnostic library for transforming data into clean API resources, with first-class TypeScript support.
+A lightweight library for building typed API resources from domain data, with first-class TypeScript support.
 
 ## Features
 
 * Framework agnostic
 * Works with JavaScript and TypeScript
-* Automatic output type inference
-* Optional explicit output types
-* Single-resource transformation
-* Collection transformation
+* Concrete, named resource types
+* Single-resource creation
+* Collection creation
 * Nested resources
+* One resource instance per input value
 * Lightweight API with no framework-specific dependencies
 
 ## Installation
@@ -21,6 +21,8 @@ npm install @bendarbinian/api-resource
 
 ## Usage
 
+Define the public fields of a resource and initialize them from domain data in its constructor:
+
 ```ts
 import { Resource } from '@bendarbinian/api-resource';
 
@@ -30,19 +32,22 @@ type User = {
   lastName: string;
 };
 
-class UserResource extends Resource<User> {
-  transform(user: User) {
-    return {
-      id: user.id,
-      fullName: `${user.firstName} ${user.lastName}`,
-    };
+class UserResource extends Resource {
+  readonly id: number;
+  readonly fullName: string;
+
+  constructor(user: User) {
+    super();
+
+    this.id = user.id;
+    this.fullName = `${user.firstName} ${user.lastName}`;
   }
 }
 ```
 
-### Transform a single resource
+### Create a single resource
 
-Use `make()` to transform a single value:
+Use `make()` to create a concrete resource instance:
 
 ```ts
 const user: User = {
@@ -52,20 +57,17 @@ const user: User = {
 };
 
 const result = UserResource.make(user);
+// UserResource
+
+result instanceof UserResource;
+// true
 ```
 
-The output type is inferred automatically from `transform()`:
+The constructor input type is enforced, and the result type is the concrete resource class.
 
-```ts
-{
-  id: number;
-  fullName: string;
-}
-```
+### Create a collection
 
-### Transform a collection
-
-Use `collection()` to transform an array:
+Use `collection()` to create one resource instance per input value:
 
 ```ts
 const users: User[] = [
@@ -82,37 +84,12 @@ const users: User[] = [
 ];
 
 const result = UserResource.collection(users);
+// UserResource[]
 ```
 
-The resulting type is inferred as an array of the `transform()` return type.
+## Nested resources
 
-## Explicit Output Type
-
-The output type can be specified explicitly when you want to enforce a response contract.
-
-```ts
-type UserResponse = {
-  id: number;
-  fullName: string;
-};
-
-class UserResource extends Resource<User, UserResponse> {
-  transform(user: User): UserResponse {
-    return {
-      id: user.id,
-      fullName: `${user.firstName} ${user.lastName}`,
-    };
-  }
-}
-```
-
-If `transform()` returns a value that does not match `UserResponse`, TypeScript will report an error.
-
-If the output type is omitted, it is inferred automatically from the concrete `transform()` implementation.
-
-## Nested Resources
-
-Resources can be composed to transform nested data.
+Resources keep their named types when they are composed:
 
 ```ts
 type Company = {
@@ -122,79 +99,95 @@ type Company = {
 
 type User = {
   id: number;
-  firstName: string;
-  lastName: string;
   company: Company;
 };
 
-class CompanyResource extends Resource<Company> {
-  transform(company: Company) {
-    return {
-      id: company.id,
-      name: company.name,
-    };
+class CompanyResource extends Resource {
+  readonly id: number;
+  readonly name: string;
+
+  constructor(company: Company) {
+    super();
+
+    this.id = company.id;
+    this.name = company.name;
   }
 }
 
-class UserResource extends Resource<User> {
-  transform(user: User) {
-    return {
-      id: user.id,
-      fullName: `${user.firstName} ${user.lastName}`,
-      company: CompanyResource.make(user.company),
-    };
+class UserResource extends Resource {
+  readonly id: number;
+  readonly company: CompanyResource;
+
+  constructor(user: User) {
+    super();
+
+    this.id = user.id;
+    this.company = CompanyResource.make(user.company);
   }
 }
+
+const user = UserResource.make({
+  id: 1,
+  company: { id: 10, name: 'Acme' },
+});
+
+user.company;
+// CompanyResource
 ```
 
 Collections can be nested in the same way:
 
 ```ts
-class OrderResource extends Resource<Order> {
-  transform(order: Order) {
-    return {
-      id: order.id,
-      items: ItemResource.collection(order.items),
-    };
+class OrderResource extends Resource {
+  readonly id: number;
+  readonly items: ItemResource[];
+
+  constructor(order: Order) {
+    super();
+
+    this.id = order.id;
+    this.items = ItemResource.collection(order.items);
   }
 }
 ```
 
 ## API
 
-### `Resource<Input, Output?>`
+### `Resource`
 
-Base class for defining a resource transformation.
+Base class for a typed API resource. The first parameter of the concrete resource constructor defines the domain data accepted by `make()` and `collection()`.
 
-```ts
-class UserResource extends Resource<User> {
-  transform(user: User) {
-    return {
-      id: user.id,
-    };
-  }
-}
-```
-
-`Input` defines the value accepted by `transform()`.
-
-`Output` is optional. When omitted, the output of `make()` and `collection()` is inferred from the return type of the concrete `transform()` implementation.
+Resource fields and their output types are declared directly on the concrete class. There is no separate output generic and no `transform()` contract.
 
 ### `Resource.make(data)`
 
-Transforms a single value.
+Calls the concrete resource constructor and returns its instance:
 
 ```ts
 const result = UserResource.make(user);
+// UserResource
 ```
 
 ### `Resource.collection(data)`
 
-Transforms an array of values.
+Calls the concrete resource constructor once for every input value and returns the instances in the same order:
 
 ```ts
 const result = UserResource.collection(users);
+// UserResource[]
 ```
+
+## Roadmap
+
+* Pagination
+* Metadata
+* Conditional fields
+* Context
+* Async creation
+* Framework integrations
+  * NestJS
+  * Express
+  * Swagger
 
 ## License
 
