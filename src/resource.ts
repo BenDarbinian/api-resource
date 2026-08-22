@@ -44,6 +44,7 @@ type ResolvedPaginationConfig<
 };
 
 type AnyResolvedPaginationConfig = ResolvedPaginationConfig<object, object>;
+type NotInferred<T> = [T][T extends any ? 0 : never];
 
 type PaginationMetaOf<Config> =
     Config extends {
@@ -91,8 +92,11 @@ type ConfiguredResourceConstructor<
 type WithoutPaginationKeyConflicts<
     BaseMeta extends object,
     ExtraMeta extends object,
-> = ExtraMeta & Record<Extract<keyof ExtraMeta, keyof BaseMeta>, never>;
-
+> = {
+    [Key in keyof ExtraMeta]: Key extends keyof BaseMeta
+        ? never
+        : ExtraMeta[Key];
+};
 type MergeMeta<BaseMeta extends object, ExtraMeta extends object> =
     [keyof ExtraMeta] extends [never] ? BaseMeta : BaseMeta & ExtraMeta;
 
@@ -151,7 +155,7 @@ export abstract class Resource {
         extraMeta?: ExtraMeta &
             WithoutPaginationKeyConflicts<
                 PaginationMetaOf<PaginationConfigOf<T>>,
-                ExtraMeta
+                NotInferred<ExtraMeta>
             >,
     ): PaginatedResponse<
         InstanceType<T>,

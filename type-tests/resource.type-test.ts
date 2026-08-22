@@ -154,3 +154,115 @@ export type ResourceTypeTests =
     | NestedMakeReturnsNamedResource
     | NestedResourceKeepsItsName
     | NestedCollectionReturnsNamedResources;
+
+const ConfiguredResource = Resource.configure({
+    pagination: {
+        meta(state) {
+            return {
+                currentPage: state.page,
+                pageSize: state.limit,
+                pageCount: state.pages,
+            };
+        },
+        links(state) {
+            return {
+                next: state.hasNextPage ? '/users?page=2' : null,
+            };
+        },
+    },
+});
+
+class ConfiguredUserResource extends ConfiguredResource {
+    readonly id: number;
+
+    constructor(user: User) {
+        super();
+
+        this.id = user.id;
+    }
+}
+
+const configuredResult = ConfiguredUserResource.paginate(
+    [{ id: 1, firstName: 'Ada', lastName: 'Lovelace' }],
+    { page: 1, limit: 20, total: 21 },
+    { totalSum: 150_000 },
+);
+
+type ConfiguredDataKeepsConcreteResource = Expect<
+    Equal<typeof configuredResult.data, ConfiguredUserResource[]>
+>;
+type ConfiguredCurrentPageIsNumber = Expect<
+    Equal<typeof configuredResult.meta.currentPage, number>
+>;
+type ConfiguredExtraMetaIsNumber = Expect<
+    Equal<typeof configuredResult.meta.totalSum, number>
+>;
+type ConfiguredNextLinkIsNullableString = Expect<
+    Equal<typeof configuredResult.links.next, string | null>
+>;
+
+// @ts-expect-error Custom metadata replaces the default metadata shape.
+configuredResult.meta.page;
+ConfiguredUserResource.paginate(
+    [{ id: 1, firstName: 'Ada', lastName: 'Lovelace' }],
+    { page: 1, limit: 20, total: 21 },
+    // @ts-expect-error Extra metadata cannot overwrite pagination metadata.
+    { pageCount: 1 },
+);
+
+const ProjectResource = Resource.configure({
+    pagination: {
+        meta(state) {
+            return {
+                pageNumber: state.page,
+                pageCount: state.pages,
+            };
+        },
+        links(state) {
+            return { next: state.hasNextPage ? '/orders?page=2' : null };
+        },
+    },
+});
+const LocalResource = ProjectResource.configurePagination({
+    meta(state) {
+        return {
+            currentPage: state.page,
+            pageCount: state.pages,
+        };
+    },
+});
+
+class LocalUserResource extends LocalResource {
+    constructor(user: User) {
+        super();
+    }
+}
+
+class GlobalOrderResource extends ProjectResource {
+    constructor(order: User) {
+        super();
+    }
+}
+
+const localResult = LocalUserResource.paginate(
+    [{ id: 1, firstName: 'Ada', lastName: 'Lovelace' }],
+    { page: 1, limit: 20, total: 21 },
+);
+const globalResult = GlobalOrderResource.paginate(
+    [{ id: 1, firstName: 'Ada', lastName: 'Lovelace' }],
+    { page: 1, limit: 20, total: 21 },
+);
+
+type LocalMetaIsInferred = Expect<
+    Equal<typeof localResult.meta.currentPage, number>
+>;
+type GlobalMetaIsInferred = Expect<
+    Equal<typeof globalResult.meta.pageNumber, number>
+>;
+// @ts-expect-error The local override does not leak into the project base.
+localResult.meta.pageNumber;
+// @ts-expect-error The project metadata does not leak into the local resource.
+globalResult.meta.currentPage;
+type LocalLinkIsInherited = Expect<
+    Equal<typeof localResult.links.next, string | null>
+>;
