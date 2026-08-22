@@ -115,3 +115,40 @@ describe('Resource', () => {
         );
     });
 });
+
+describe('Resource pagination', () => {
+    it('paginate() serializes the collection and calculates page metadata', () => {
+        const result = UserResource.paginate(
+            [
+                { id: 1, firstName: 'Ada', lastName: 'Lovelace' },
+                { id: 2, firstName: 'Grace', lastName: 'Hopper' },
+            ],
+            { page: 2, limit: 2, total: 5 },
+        );
+
+        assert.deepStrictEqual(result.meta, {
+            page: 2,
+            limit: 2,
+            total: 5,
+            pages: 3,
+        });
+        assert.equal(result.data.length, 2);
+        assert.ok(result.data[0] instanceof UserResource);
+        assert.ok(result.data[1] instanceof UserResource);
+        assert.equal('links' in result, false);
+    });
+
+    it('paginate() handles an empty collection and total', () => {
+        const result = UserResource.paginate(
+            [],
+            { page: 1, limit: 20, total: 0 },
+        );
+
+        assert.deepStrictEqual(result.meta, {
+            page: 1,
+            limit: 20,
+            pages: 0,
+            total: 0,
+        });
+    });
+});

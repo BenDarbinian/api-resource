@@ -124,9 +124,33 @@ type NestedCollectionReturnsNamedResources = Expect<
     Equal<typeof order.items, ItemResource[]>
 >;
 
+const paginatedUsers = UserResource.paginate([
+    { id: 1, firstName: 'Ada', lastName: 'Lovelace' },
+], {
+    page: 2,
+    limit: 20,
+    total: 21,
+});
+
+type PaginatedDataKeepsConcreteResource = Expect<
+    Equal<typeof paginatedUsers.data, UserResource[]>
+>;
+type DefaultPaginationPageIsNumber = Expect<
+    Equal<typeof paginatedUsers.meta.page, number>
+>;
+type DefaultPaginationPagesIsNumber = Expect<
+    Equal<typeof paginatedUsers.meta.pages, number>
+>;
+
+// @ts-expect-error Default pagination responses do not contain links.
+paginatedUsers.links;
+
 export type ResourceTypeTests =
     | MakeReturnsConcreteResource
     | CollectionReturnsConcreteResources
+    | PaginatedDataKeepsConcreteResource
+    | DefaultPaginationPageIsNumber
+    | DefaultPaginationPagesIsNumber
     | NestedMakeReturnsNamedResource
     | NestedResourceKeepsItsName
     | NestedCollectionReturnsNamedResources;
