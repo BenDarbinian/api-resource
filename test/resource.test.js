@@ -138,6 +138,25 @@ describe('Resource pagination', () => {
         assert.equal('links' in result, false);
     });
 
+    it('paginate() delegates resource creation to collection()', () => {
+        let collectionCalls = 0;
+
+        class TrackingUserResource extends UserResource {
+            static collection(data) {
+                collectionCalls += 1;
+                return super.collection(data);
+            }
+        }
+
+        const result = TrackingUserResource.paginate(
+            [{ id: 1, firstName: 'Ada', lastName: 'Lovelace' }],
+            { page: 1, limit: 20, total: 1 },
+        );
+
+        assert.equal(collectionCalls, 1);
+        assert.ok(result.data[0] instanceof TrackingUserResource);
+    });
+
     it('paginate() handles an empty collection and total', () => {
         const result = UserResource.paginate(
             [],
@@ -274,6 +293,81 @@ describe('Configured pagination', () => {
         assert.deepStrictEqual(global.links, {
             next: '/orders?page=3',
         });
+    });
+
+    it('passes a framework-agnostic context to links()', () => {
+        let receivedContext;
+        const ConfiguredResource = Resource.configure({
+            pagination: {
+                links(state, context) {
+                    receivedContext = context;
+
+                    return {
+                        next: context.path && state.hasNextPage
+                            ? `${context.path}?page=${state.page + 1}`
+                            : null,
+                    };
+                },
+            },
+        });
+
+        class ContextUserResource extends ConfiguredResource {
+            constructor(user) {
+                super();
+
+                this.id = user.id;
+            }
+        }
+
+        const result = ContextUserResource.paginate(
+            [{ id: 1 }],
+            { page: 1, limit: 1, total: 2 },
+            undefined,
+            {
+                path: '/users',
+                query: { status: 'active' },
+                filter: { archived: false },
+                sort: { field: 'createdAt' },
+                search: 'Ada',
+            },
+        );
+
+        assert.deepStrictEqual(receivedContext, {
+            path: '/users',
+            query: { status: 'active' },
+            filter: { archived: false },
+            sort: { field: 'createdAt' },
+            search: 'Ada',
+        });
+        assert.deepStrictEqual(result.links, { next: '/users?page=2' });
+    });
+
+    it('can disable inherited links for one resource', () => {
+        const ProjectResource = Resource.configure({
+            pagination: {
+                links() {
+                    return { next: '/projects?page=2' };
+                },
+            },
+        });
+        const NoLinksResource = ProjectResource.configurePagination({
+            links: false,
+        });
+
+        class ProjectItemResource extends NoLinksResource {
+            constructor(project) {
+                super();
+
+                this.id = project.id;
+            }
+        }
+
+        const result = ProjectItemResource.paginate(
+            [{ id: 1 }],
+            { page: 1, limit: 1, total: 1 },
+        );
+
+        assert.equal('links' in result, false);
     });
 
     it('preserves nested resources inside paginated collections', () => {

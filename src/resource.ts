@@ -1,4 +1,4 @@
-type ResourceConstructor = new (data: any) => Resource;
+type ResourceConstructor = new (data: never) => Resource;
 
 export type PaginationInput = {
     page: number;
@@ -23,8 +23,18 @@ export type PaginationMetaFactory<Meta extends object> = (
     state: PaginationState,
 ) => Meta;
 
+export type PaginationLinkContext = {
+    path?: string;
+    query?: Readonly<Record<string, unknown>>;
+    filter?: Readonly<Record<string, unknown>>;
+    sort?: Readonly<Record<string, unknown>>;
+    search?: string;
+    [key: string]: unknown;
+};
+
 export type PaginationLinksFactory<Links extends object> = (
     state: PaginationState,
+    context: PaginationLinkContext,
 ) => Links;
 
 export type PaginationConfig<
@@ -32,7 +42,7 @@ export type PaginationConfig<
     Links extends object = object,
 > = {
     meta?: PaginationMetaFactory<Meta>;
-    links?: PaginationLinksFactory<Links>;
+    links?: PaginationLinksFactory<Links> | false;
 };
 
 type ResolvedPaginationConfig<
@@ -44,7 +54,6 @@ type ResolvedPaginationConfig<
 };
 
 type AnyResolvedPaginationConfig = ResolvedPaginationConfig<object, object>;
-type NotInferred<T> = [T][T extends any ? 0 : never];
 
 type PaginationMetaOf<Config> =
     Config extends {
@@ -54,11 +63,16 @@ type PaginationMetaOf<Config> =
         : DefaultPaginationMeta;
 
 type PaginationLinksOf<Config> =
-    Config extends {
-        links?: (state: PaginationState) => infer Links extends object;
-    }
-        ? Links
-        : never;
+    Config extends { links?: false }
+        ? never
+        : Config extends {
+        links?: (
+            state: PaginationState,
+            context: PaginationLinkContext,
+        ) => infer Links extends object;
+        }
+            ? Links
+            : never;
 
 type MergePaginationConfig<
     Base extends AnyResolvedPaginationConfig,
@@ -69,11 +83,16 @@ type MergePaginationConfig<
     }
         ? Meta
         : PaginationMetaOf<Base>,
-    Override extends {
-        links: (state: PaginationState) => infer Links extends object;
-    }
-        ? Links
-        : PaginationLinksOf<Base>
+    Override extends { links: false }
+        ? never
+        : Override extends {
+        links: (
+            state: PaginationState,
+            context: PaginationLinkContext,
+        ) => infer Links extends object;
+        }
+            ? Links
+            : PaginationLinksOf<Base>
 >;
 
 type PaginationConfigOf<T> =
@@ -155,8 +174,9 @@ export abstract class Resource {
         extraMeta?: ExtraMeta &
             WithoutPaginationKeyConflicts<
                 PaginationMetaOf<PaginationConfigOf<T>>,
-                NotInferred<ExtraMeta>
+                NoInfer<ExtraMeta>
             >,
+        context?: PaginationLinkContext,
     ): PaginatedResponse<
         InstanceType<T>,
         PaginationMetaOf<PaginationConfigOf<T>>,
@@ -170,11 +190,11 @@ export abstract class Resource {
             hasPreviousPage: pagination.page > 1,
             hasNextPage: pagination.page < pages,
         };
-        const configuredResource = this as T & {
+        const configuredResource = this as T & typeof Resource & {
             readonly paginationConfig: PaginationConfigOf<T>;
         };
         const response = {
-            data: data.map(item => new this(item) as InstanceType<T>),
+            data: configuredResource.collection(data) as InstanceType<T>[],
             meta: {
                 ...configuredResource.paginationConfig.meta(state),
                 ...(extraMeta ?? {}),
@@ -184,7 +204,10 @@ export abstract class Resource {
         if (configuredResource.paginationConfig.links) {
             return {
                 ...response,
-                links: configuredResource.paginationConfig.links(state),
+                links: configuredResource.paginationConfig.links(
+                    state,
+                    context ?? {},
+                ),
             } as unknown as PaginatedResponse<
                 InstanceType<T>,
                 PaginationMetaOf<PaginationConfigOf<T>>,
@@ -244,7 +267,10 @@ export abstract class Resource {
     ): ConfiguredResourceConstructor<AnyResolvedPaginationConfig> {
         const baseResource = this;
         const inheritedConfig = baseResource.paginationConfig as ResolvedPaginationConfig;
-        const links = configuration.links ?? inheritedConfig.links;
+        const links =
+            configuration.links === false
+                ? undefined
+                : configuration.links ?? inheritedConfig.links;
         const paginationConfig = {
             meta: configuration.meta ?? inheritedConfig.meta,
             ...(links ? { links } : {}),

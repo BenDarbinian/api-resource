@@ -186,6 +186,13 @@ const configuredResult = ConfiguredUserResource.paginate(
     [{ id: 1, firstName: 'Ada', lastName: 'Lovelace' }],
     { page: 1, limit: 20, total: 21 },
     { totalSum: 150_000 },
+    {
+        path: '/users',
+        query: { role: 'admin' },
+        filter: { active: true },
+        sort: { field: 'name' },
+        search: 'Ada',
+    },
 );
 
 type ConfiguredDataKeepsConcreteResource = Expect<
@@ -218,8 +225,29 @@ const ProjectResource = Resource.configure({
                 pageCount: state.pages,
             };
         },
-        links(state) {
-            return { next: state.hasNextPage ? '/orders?page=2' : null };
+        links(state, context) {
+            const path: string | undefined = context.path;
+            const query:
+                | Readonly<Record<string, unknown>>
+                | undefined = context.query;
+            const filter:
+                | Readonly<Record<string, unknown>>
+                | undefined = context.filter;
+            const sort:
+                | Readonly<Record<string, unknown>>
+                | undefined = context.sort;
+            const search: string | undefined = context.search;
+
+            void query;
+            void filter;
+            void sort;
+            void search;
+
+            return {
+                next: state.hasNextPage
+                    ? `${path ?? '/orders'}?page=2`
+                    : null,
+            };
         },
     },
 });
@@ -266,3 +294,21 @@ globalResult.meta.currentPage;
 type LocalLinkIsInherited = Expect<
     Equal<typeof localResult.links.next, string | null>
 >;
+
+const NoLinksResource = ProjectResource.configurePagination({
+    links: false,
+});
+
+class NoLinksUserResource extends NoLinksResource {
+    constructor(user: User) {
+        super();
+    }
+}
+
+const noLinksResult = NoLinksUserResource.paginate(
+    [{ id: 1, firstName: 'Ada', lastName: 'Lovelace' }],
+    { page: 1, limit: 20, total: 21 },
+);
+
+// @ts-expect-error Disabled pagination links are absent from the response type.
+noLinksResult.links;
