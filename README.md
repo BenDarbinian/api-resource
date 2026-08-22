@@ -1,18 +1,24 @@
 # @bendarbinian/api-resource
 
-A lightweight library for building typed API resources from domain data, with first-class TypeScript support.
+A small, framework-agnostic library for turning domain data into typed API
+resources. Define the public response fields in a class constructor, then use
+the same class for single values, collections, nested resources, and paginated
+responses.
 
 ## Features
 
-- Framework agnostic
-- Works with JavaScript and TypeScript
-- Concrete, named resource types
-- Single-resource creation
-- Collection creation
-- Nested resources
-- Paginated responses with typed metadata and links
-- One resource instance per input value
-- Lightweight API with no framework-specific dependencies
+- Constructor-driven resources with no separate transform contract
+- Concrete return types inferred from each resource class
+- Single resources, collections, and nested resources
+- Typed paginated responses with customizable metadata and links
+- Project-wide pagination defaults with per-resource overrides
+- JavaScript and TypeScript support
+- ESM-only package with no runtime dependencies
+
+## Requirements
+
+- Node.js 20 or newer
+- An ESM project or an environment that can import ESM packages
 
 ## Installation
 
@@ -20,9 +26,10 @@ A lightweight library for building typed API resources from domain data, with fi
 npm install @bendarbinian/api-resource
 ```
 
-## Usage
+## Quick start
 
-Define the public fields of a resource and initialize them from domain data in its constructor:
+Extend `Resource` and let the constructor describe both the accepted domain
+value and the public response shape:
 
 ```ts
 import { Resource } from '@bendarbinian/api-resource';
@@ -31,6 +38,7 @@ type User = {
   id: number;
   firstName: string;
   lastName: string;
+  passwordHash: string;
 };
 
 class UserResource extends Resource {
@@ -44,53 +52,40 @@ class UserResource extends Resource {
     this.fullName = `${user.firstName} ${user.lastName}`;
   }
 }
-```
 
-### Create a single resource
-
-Use `make()` to create a concrete resource instance:
-
-```ts
-const user: User = {
+const user = UserResource.make({
   id: 1,
-  firstName: 'John',
-  lastName: 'Doe',
-};
+  firstName: 'Ada',
+  lastName: 'Lovelace',
+  passwordHash: 'not-exposed',
+});
+// UserResource { id: 1, fullName: 'Ada Lovelace' }
 
-const result = UserResource.make(user);
-// UserResource
-
-result instanceof UserResource;
-// true
-```
-
-The constructor input type is enforced, and the result type is the concrete resource class.
-
-### Create a collection
-
-Use `collection()` to create one resource instance per input value:
-
-```ts
-const users: User[] = [
+const users = UserResource.collection([
   {
     id: 1,
-    firstName: 'John',
-    lastName: 'Doe',
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+    passwordHash: 'not-exposed',
   },
   {
     id: 2,
-    firstName: 'Jane',
-    lastName: 'Doe',
+    firstName: 'Grace',
+    lastName: 'Hopper',
+    passwordHash: 'not-exposed',
   },
-];
-
-const result = UserResource.collection(users);
+]);
 // UserResource[]
 ```
 
+`make()` and `collection()` infer the constructor input and preserve the
+concrete resource type. Each collection item is a separate resource instance,
+in the same order as the input data.
+
 ## Nested resources
 
-Resources keep their named types when they are composed:
+Compose resources by calling `make()` or `collection()` inside another
+resource constructor. Nested values keep their concrete resource types:
 
 ```ts
 type Company = {
@@ -98,7 +93,7 @@ type Company = {
   name: string;
 };
 
-type User = {
+type Employee = {
   id: number;
   company: Company;
 };
@@ -115,122 +110,187 @@ class CompanyResource extends Resource {
   }
 }
 
-class UserResource extends Resource {
+class EmployeeResource extends Resource {
   readonly id: number;
   readonly company: CompanyResource;
 
-  constructor(user: User) {
+  constructor(employee: Employee) {
     super();
 
-    this.id = user.id;
-    this.company = CompanyResource.make(user.company);
+    this.id = employee.id;
+    this.company = CompanyResource.make(employee.company);
   }
 }
 
-const user = UserResource.make({
+const employee = EmployeeResource.make({
   id: 1,
-  company: { id: 10, name: 'Acme' },
+  company: { id: 10, name: 'Analytical Engines' },
 });
 
-user.company;
-// CompanyResource
+employee.company instanceof CompanyResource;
+// true
 ```
 
-Collections can be nested in the same way:
-
-```ts
-class OrderResource extends Resource {
-  readonly id: number;
-  readonly items: ItemResource[];
-
-  constructor(order: Order) {
-    super();
-
-    this.id = order.id;
-    this.items = ItemResource.collection(order.items);
-  }
-}
-```
+Use `SomeResource.collection(data)` in the same way for nested arrays.
 
 ## Pagination
 
-Use `paginate()` for resource collections. The fourth argument is an optional,
-framework-agnostic context for building links; its fields are optional and
-custom context fields are allowed:
+### Default response
+
+`paginate()` creates the resource collection and calculates the default
+metadata:
 
 ```ts
-const ProjectResource = Resource.configure({
+const result = UserResource.paginate(
+  usersFromDatabase,
+  { page: 2, limit: 20, total: 42 },
+  { unreadCount: 3 },
+);
+
+result.data;
+// UserResource[]
+
+result.meta;
+// {
+//   page: 2,
+//   limit: 20,
+//   total: 42,
+//   pages: 3,
+//   unreadCount: 3,
+// }
+```
+
+The optional third argument adds endpoint-specific metadata. In TypeScript,
+its keys cannot overwrite keys returned by the configured metadata factory.
+
+By default, the response has no `links` property. The library calculates
+`pages` as `Math.ceil(total / limit)` and expects the caller or framework
+adapter to provide valid pagination values; it does not validate or clamp
+`page`, `limit`, or `total`.
+
+### Custom metadata and links
+
+Use `Resource.configure()` once to create a project base class. Metadata and
+link return types are inferred automatically:
+
+```ts
+const ApiResource = Resource.configure({
   pagination: {
+    meta(state) {
+      return {
+        currentPage: state.page,
+        pageSize: state.limit,
+        totalItems: state.total,
+        pageCount: state.pages,
+      };
+    },
     links(state, context) {
-      const path = context.path ?? '/projects';
-      const search = context.search ? `&search=${context.search}` : '';
+      const path = context.path ?? '/users';
 
       return {
-        next: state.hasNextPage
-          ? `${path}?page=${state.page + 1}${search}`
+        first: `${path}?page=1`,
+        previous: state.hasPreviousPage
+          ? `${path}?page=${state.page - 1}`
           : null,
+        next: state.hasNextPage ? `${path}?page=${state.page + 1}` : null,
       };
     },
   },
 });
 
-class ProjectItemResource extends ProjectResource {
-  constructor(project: Project) {
-    super();
+class ApiUserResource extends ApiResource {
+  readonly id: number;
 
-    this.id = project.id;
+  constructor(user: User) {
+    super();
+    this.id = user.id;
   }
 }
 
-const result = ProjectItemResource.paginate(
-  projects,
-  { page: 1, limit: 20, total: 42 },
+const result = ApiUserResource.paginate(
+  usersFromDatabase,
+  { page: 2, limit: 20, total: 42 },
   { unreadCount: 3 },
-  {
-    path: '/projects',
-    query: { status: 'active' },
-    filter: { archived: false },
-    sort: { field: 'createdAt' },
-    search: 'api',
-  },
+  { path: '/users', search: 'Ada' },
 );
+
+result.meta.currentPage;
+// number
+
+result.links.next;
+// string | null
 ```
 
-`links()` receives `PaginationState` and `PaginationLinkContext`. Links are
-omitted by default. They can be disabled for a configured resource, including
-inherited links, and the returned TypeScript type omits `links` as well:
+The metadata factory replaces the default metadata shape. Both factories
+receive a `PaginationState` with `page`, `limit`, `total`, `pages`,
+`hasPreviousPage`, and `hasNextPage`.
+
+The link factory also receives an optional `PaginationLinkContext`. Its
+built-in fields are `path`, `query`, `filter`, `sort`, and `search`; custom
+fields are allowed for framework adapters. If no context is passed,
+`links()` receives an empty object.
+
+### Per-resource overrides
+
+Use `configurePagination()` to derive a base class with local settings.
+Unspecified settings are inherited:
 
 ```ts
-const ProjectWithoutLinks = ProjectResource.configurePagination({
+const AdminResource = ApiResource.configurePagination({
+  meta(state) {
+    return {
+      currentPage: state.page,
+      pageCount: state.pages,
+    };
+  },
+});
+
+const ResourceWithoutLinks = ApiResource.configurePagination({
   links: false,
 });
 ```
 
-## API
+`AdminResource` keeps the project link factory and replaces only its metadata
+factory. `ResourceWithoutLinks` omits `links` from both runtime responses and
+their inferred TypeScript type.
 
-### `Resource`
-
-Base class for a typed API resource. The first parameter of the concrete resource constructor defines the domain data accepted by `make()` and `collection()`.
-
-Resource fields and their output types are declared directly on the concrete class. There is no separate output generic and no `transform()` contract.
+## API reference
 
 ### `Resource.make(data)`
 
-Calls the concrete resource constructor and returns its instance:
-
-```ts
-const result = UserResource.make(user);
-// UserResource
-```
+Calls the concrete resource constructor once and returns its instance.
 
 ### `Resource.collection(data)`
 
-Calls the concrete resource constructor once for every input value and returns the instances in the same order:
+Calls the concrete resource constructor once per input value and returns the
+instances in input order.
 
-```ts
-const result = UserResource.collection(users);
-// UserResource[]
-```
+### `Resource.paginate(data, pagination, extraMeta?, context?)`
+
+Returns `{ data, meta }` and includes `links` when a link factory is
+configured. `data` preserves the concrete resource type.
+
+### `Resource.configure({ pagination })`
+
+Creates a typed base class with project-wide `meta` and `links` factories.
+
+### `Resource.configurePagination(configuration)`
+
+Creates a typed base class that overrides selected pagination settings while
+inheriting the rest.
+
+## Exported types
+
+The package exports the following TypeScript types from its root entry point:
+
+- `PaginationInput` — caller-provided `page`, `limit`, and `total`
+- `PaginationState` — pagination input plus derived page state
+- `DefaultPaginationMeta` — default response metadata shape
+- `PaginationMetaFactory<Meta>` — custom metadata callback
+- `PaginationLinkContext` — framework-agnostic link context
+- `PaginationLinksFactory<Links>` — custom links callback
+- `PaginationConfig<Meta, Links>` — pagination configuration object
+- `PaginatedResponse<Resource, Meta, Links, ExtraMeta>` — response shape
 
 ## License
 
