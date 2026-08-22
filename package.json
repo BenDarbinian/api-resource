@@ -1,6 +1,6 @@
 {
   "name": "@bendarbinian/api-resource",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A lightweight library for building typed API resources from domain data, with first-class TypeScript support.",
   "keywords": [
     "api",
