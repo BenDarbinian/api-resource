@@ -4,14 +4,15 @@ A lightweight library for building typed API resources from domain data, with fi
 
 ## Features
 
-* Framework agnostic
-* Works with JavaScript and TypeScript
-* Concrete, named resource types
-* Single-resource creation
-* Collection creation
-* Nested resources
-* One resource instance per input value
-* Lightweight API with no framework-specific dependencies
+- Framework agnostic
+- Works with JavaScript and TypeScript
+- Concrete, named resource types
+- Single-resource creation
+- Collection creation
+- Nested resources
+- Paginated responses with typed metadata and links
+- One resource instance per input value
+- Lightweight API with no framework-specific dependencies
 
 ## Installation
 
@@ -151,6 +152,60 @@ class OrderResource extends Resource {
 }
 ```
 
+## Pagination
+
+Use `paginate()` for resource collections. The fourth argument is an optional,
+framework-agnostic context for building links; its fields are optional and
+custom context fields are allowed:
+
+```ts
+const ProjectResource = Resource.configure({
+  pagination: {
+    links(state, context) {
+      const path = context.path ?? '/projects';
+      const search = context.search ? `&search=${context.search}` : '';
+
+      return {
+        next: state.hasNextPage
+          ? `${path}?page=${state.page + 1}${search}`
+          : null,
+      };
+    },
+  },
+});
+
+class ProjectItemResource extends ProjectResource {
+  constructor(project: Project) {
+    super();
+
+    this.id = project.id;
+  }
+}
+
+const result = ProjectItemResource.paginate(
+  projects,
+  { page: 1, limit: 20, total: 42 },
+  { unreadCount: 3 },
+  {
+    path: '/projects',
+    query: { status: 'active' },
+    filter: { archived: false },
+    sort: { field: 'createdAt' },
+    search: 'api',
+  },
+);
+```
+
+`links()` receives `PaginationState` and `PaginationLinkContext`. Links are
+omitted by default. They can be disabled for a configured resource, including
+inherited links, and the returned TypeScript type omits `links` as well:
+
+```ts
+const ProjectWithoutLinks = ProjectResource.configurePagination({
+  links: false,
+});
+```
+
 ## API
 
 ### `Resource`
@@ -176,18 +231,6 @@ Calls the concrete resource constructor once for every input value and returns t
 const result = UserResource.collection(users);
 // UserResource[]
 ```
-
-## Roadmap
-
-* Pagination
-* Metadata
-* Conditional fields
-* Context
-* Async creation
-* Framework integrations
-  * NestJS
-  * Express
-  * Swagger
 
 ## License
 

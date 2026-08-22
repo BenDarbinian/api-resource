@@ -6,8 +6,5 @@
     "types": []
   },
   "extends": "./tsconfig.json",
-  "include": [
-    "./src/**/*.ts",
-    "./type-tests/**/*.ts"
-  ]
+  "include": ["./src/**/*.ts", "./type-tests/**/*.ts"]
 }
